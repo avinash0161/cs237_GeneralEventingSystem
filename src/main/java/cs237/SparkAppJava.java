@@ -3,15 +3,13 @@ package cs237;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.apache.spark.SparkConf;
-import org.apache.spark.api.java.JavaRDD;
-import org.apache.spark.api.java.JavaSparkContext;
 
 import com.google.common.io.Closeables;
 
+import org.apache.spark.api.java.function.Function2;
+import org.apache.spark.api.java.function.PairFunction;
 import org.apache.spark.storage.StorageLevel;
 import org.apache.spark.streaming.Duration;
-import org.apache.spark.api.java.function.Function;
-import org.apache.spark.streaming.api.java.JavaDStream;
 import org.apache.spark.streaming.api.java.JavaPairDStream;
 import org.apache.spark.streaming.api.java.JavaReceiverInputDStream;
 import org.apache.spark.streaming.api.java.JavaStreamingContext;
@@ -23,44 +21,269 @@ import java.io.InputStreamReader;
 import java.net.ConnectException;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
-import java.util.regex.Pattern;
+import java.util.*;
 
 public class SparkAppJava extends Receiver<String> {
-    // ============= Receiver code that receives data over a socket ==============
 
-    String host = null;
-    int port = -1;
+    String streamFromHost = "localhost";
+    int streamFromPort = 9999;
+
+    // Metadata of Streams
+    public static Map<String, Map<String, Integer>> streamMetaMap = new HashMap<>();
+
+    // Event Rulls
+    public static Map<String, IRuleMerger> ruleMergerMap = new HashMap<>();
+    public static Map<String, List<IRulePredicate>> streamPredicateMap = new HashMap<>();
 
     public static Logger log = LogManager.getRootLogger();
 
+    /**
+     * Load Event Rules
+     * TODO - (1) Load the rules list from some file or DB. (2) Also load the java objects from jar files.
+     */
+    public static void loadEventRules() {
+
+        // (1) Load the Rules from somewhere.
+        List<IEventRule> eventRuleList = new ArrayList<>();
+        IEventRule rule0 = new Thermometer80LTRule();
+        eventRuleList.add(rule0);
+        ruleMergerMap.put(rule0.ruleId(), rule0.merger());
+
+        // (2) Construct the Map of stream to List of Predicates;
+        eventRuleList.forEach(eventRule -> {
+            eventRule.predicateList().forEach(predicate -> {
+                if (streamPredicateMap.containsKey(predicate.stream())) {
+                     streamPredicateMap.get(predicate.stream()).add(predicate);
+                }
+                else {
+                    streamPredicateMap.put(predicate.stream(), Arrays.asList(predicate));
+                }
+            });
+        });
+    }
+
+    /**
+     * Apply a predicate on an attribute
+     *
+     * @param attribute
+     * @param predicate
+     * @return
+     */
+    public static boolean applyPredicate(String attribute, IRulePredicate predicate) {
+
+        switch(predicate.operator()) {
+            case EQUAL:
+                switch(predicate.attributeType()) {
+                    case STRING:
+                        return attribute.equals(predicate.valueString());
+                    case INT:
+                        return Integer.valueOf(attribute) == predicate.valueInt();
+                    case FLOAT:
+                        return Double.valueOf(attribute) == predicate.valueFloat();
+                }
+                break;
+            case CONTAINS:
+                switch(predicate.attributeType()) {
+                    case STRING:
+                        return attribute.contains(predicate.valueString());
+                    case INT:
+                        return false;
+                    case FLOAT:
+                        return false;
+                }
+                break;
+            case LESS_THAN:
+                switch(predicate.attributeType()) {
+                    case STRING:
+                        return attribute.compareTo(predicate.valueString()) < 0;
+                    case INT:
+                        return Integer.valueOf(attribute) < predicate.valueInt();
+                    case FLOAT:
+                        return Double.valueOf(attribute) < predicate.valueFloat();
+                }
+                break;
+            case LARGER_THAN:
+                switch(predicate.attributeType()) {
+                    case STRING:
+                        return attribute.compareTo(predicate.valueString()) > 0;
+                    case INT:
+                        return Integer.valueOf(attribute) > predicate.valueInt();
+                    case FLOAT:
+                        return Double.valueOf(attribute) > predicate.valueFloat();
+                }
+                break;
+            case LESS_EQUAL_THAN:
+                switch(predicate.attributeType()) {
+                    case STRING:
+                        return attribute.compareTo(predicate.valueString()) <= 0;
+                    case INT:
+                        return Integer.valueOf(attribute) <= predicate.valueInt();
+                    case FLOAT:
+                        return Double.valueOf(attribute) <= predicate.valueFloat();
+                }
+                break;
+            case LARGER_EQUAL_THAN:
+                switch(predicate.attributeType()) {
+                    case STRING:
+                        return attribute.compareTo(predicate.valueString()) >= 0;
+                    case INT:
+                        return Integer.valueOf(attribute) >= predicate.valueInt();
+                    case FLOAT:
+                        return Double.valueOf(attribute) >= predicate.valueFloat();
+                }
+                break;
+            default:
+                return false;
+        }
+        return false;
+    }
+
     public static void main(String[] args) throws Exception {
 
-        if (args.length < 2) {
-            System.err.println("Usage: JavaCustomReceiver <hostname> <port>");
-            System.exit(1);
+        String host = "localhost";
+        int port = 9999;
+
+        if (args.length == 2) {
+            host = args[0];
+            port = Integer.parseInt(args[1]);
         }
 
-//        Pattern SPACE = Pattern.compile(" ");
-        // Create the context with a 5 second batch size
+        // (0) Load Event Rules
+        loadEventRules();
+
+        // - DEBUG - //
+//        System.out.println("---------streamPredicateMap----------");
+//        System.out.println(streamPredicateMap);
+//        log.debug("---------streamPredicateMap----------");
+//        log.debug(streamPredicateMap);
+        // - DEBUG - //
+
+        // (1) New a Stream Receiver
         SparkConf sparkConf = new SparkConf().setAppName("JavaCustomReceiver");
         JavaStreamingContext ssc = new JavaStreamingContext(sparkConf, new Duration(5000));
+        // Create an input stream with the custom receiver on target ip:streamFromPort
+        JavaReceiverInputDStream<String> lines = ssc.receiverStream(new SparkAppJava(host, port));
 
-        // Create an input stream with the custom receiver on target ip:port and count the
-        // words in input stream of \n delimited text (eg. generated by 'nc')
+        // - DEBUG - //
+        System.out.println("---------Original Input----------");
+        lines.print(10);
+        log.debug("---------Original Input----------");
+        log.debug(lines);
+        // - DEBUG - //
 
-        JavaReceiverInputDStream<String> lines = ssc.receiverStream(new SparkAppJava(args[0], Integer.parseInt(args[1])));
-//        JavaDStream<String> words = lines.flatMap(x -> Arrays.asList(SPACE.split(x)).iterator());
-//        JavaPairDStream<String, Integer> wordCounts = words.mapToPair(s -> new Tuple2<>(s, 1))
-//                .reduceByKey((i1, i2) -> i1 + i2);
-//
-//        wordCounts.print();
+
+        // (2) Map the whole stream to different data source streams
+        JavaPairDStream<String, List<String>> streams = lines.mapToPair(
+                line -> {
+                    String[] entries = line.split("\\|");
+                    return new Tuple2<>(entries[0], Arrays.asList(entries));
+                });
+
+        // - DEBUG - //
+//        System.out.println("---------Streams Separated----------");
+//        streams.print(10);
+//        log.debug("---------Streams Separated----------");
+//        log.debug(lines);
+        // - DEBUG - //
+
+        // (3) Apply the predicates to each stream
+        JavaPairDStream<String, List<String>> predicatesMatchRecords =
+                streams.mapToPair((PairFunction<Tuple2<String, List<String>>, String, List<String>>) stream -> {
+
+            // - DEBUG - //
+//            System.out.println("========== Process record: ");
+//            System.out.println(stream._1() + ":" + stream._2());
+            // - DEBUG - //
+
+            String streamName = stream._1();
+            if (streamPredicateMap.containsKey(streamName)) {
+
+                // - DEBUG - //
+//                System.out.println("========== Stream: " + streamName + " matches to predicates.");
+                // - DEBUG - //
+
+                List<IRulePredicate> predicates = streamPredicateMap.get(streamName);
+                for (Iterator<IRulePredicate> iter = predicates.iterator(); iter.hasNext();) {
+
+                    IRulePredicate predicate = iter.next();
+
+                    // - DEBUG - //
+//                    System.out.println("========== Rule: " + predicate.getParent().ruleId());
+//                    System.out.println("========== Predicate: " + predicate.id());
+//                    System.out.println("==========     Attribute: " + predicate.attribute());
+//                    System.out.println("==========     AttributeType: " + predicate.attributeType());
+//                    System.out.println("==========     Operator: " + predicate.operator());
+//                    System.out.println("==========     ValueString: " + predicate.valueString());
+//                    System.out.println("==========     ValueInt: " + predicate.valueInt());
+//                    System.out.println("==========     ValueString: " + predicate.valueFloat());
+                    // - DEBUG - //
+
+                    String attribute = predicate.attribute();
+                    int indexOfAttribute = streamMetaMap.get(streamName).get(attribute);
+
+                    // - DEBUG - //
+//                    System.out.println("========== indexOfAttribute: " + indexOfAttribute);
+                    // - DEBUG - //
+
+                    if (applyPredicate(stream._2().get(indexOfAttribute), predicate)) {
+                        return new Tuple2<>(predicate.getParent().ruleId(), stream._2());
+                    }
+                }
+            }
+            return null;
+        }).filter(record -> record != null);
+
+        // - DEBUG - //
+        System.out.println("---------Predicates Applied----------");
+        predicatesMatchRecords.print(10);
+        log.debug("---------Predicates Applied----------");
+        log.debug(predicatesMatchRecords);
+        // - DEBUG - //
+
+        // (4) Merge the predicates of each Rule
+        // TODO - Currently, merge phase only merge the list of records together for each matched rule
+        // TODO - Need to find a way to call rule's merger for a list of predicates and decide whether
+        // TODO - this record is in the result list or not.
+        JavaPairDStream<String, List<String>> rulesMatchRecords = predicatesMatchRecords.reduceByKey(
+                (Function2<List<String>, List<String>, List<String>>) (strings1, strings2) -> {
+
+                    List<String> records = new ArrayList<>();
+
+                    StringBuilder record1 = new StringBuilder();
+                    strings1.forEach(attr -> {
+                        record1.append(attr);
+                        record1.append("-");
+                    });
+                    records.add(record1.toString());
+
+                    StringBuilder record2 = new StringBuilder();
+                    strings2.forEach(attr -> {
+                        record2.append(attr);
+                        record2.append("-");
+                    });
+                    records.add(record2.toString());
+
+                    return records;
+                });
+
+        // - DEBUG - //
+//        System.out.println("---------Rules Merged----------");
+//        rulesMatchRecords.print(10);
+//        log.debug("---------Rules Merged----------");
+//        log.debug(rulesMatchRecords);
+        // - DEBUG - //
+
+        // ======================== Previous Manually Rules Engine ======================== //
+        /*SparkConf sparkConf = new SparkConf().setAppName("JavaCustomReceiver");
+        JavaStreamingContext ssc = new JavaStreamingContext(sparkConf, new Duration(5000));
+        // Create an input stream with the custom receiver on target ip:streamFromPort
+        JavaReceiverInputDStream<String> lines = ssc.receiverStream(new SparkAppJava(host, port));
 
         // - DEBUG - //
         lines.print(10);
         log.debug("---------Original Input----------");
         log.debug(lines);
         // - DEBUG - //
-
 
         // Filter only data begin with "ThermometerObservation";
         JavaDStream<String> thermometerReadings = lines.filter(
@@ -106,7 +329,8 @@ public class SparkAppJava extends Receiver<String> {
         // - DEBUG - //
         log.debug("---------Out put-----------");
         log.debug(output);
-        // - DEBUG - //
+        // - DEBUG - //*/
+        // ======================== Previous Manually Rules Engine ======================== //
 
         ssc.start();
         ssc.awaitTermination();
@@ -114,8 +338,16 @@ public class SparkAppJava extends Receiver<String> {
 
     public SparkAppJava(String host_ , int port_) {
         super(StorageLevel.MEMORY_AND_DISK_2());
-        host = host_;
-        port = port_;
+        streamFromHost = host_;
+        streamFromPort = port_;
+
+        Map<String, Integer> ThermometerObservation = new HashMap<>();
+        ThermometerObservation.put("id", 1);
+        ThermometerObservation.put("temperature", 2);
+        ThermometerObservation.put("timeStamp", 3);
+        ThermometerObservation.put("sensor_id", 4);
+
+        streamMetaMap.put("ThermometerObservation", ThermometerObservation);
     }
 
     @Override
@@ -137,7 +369,7 @@ public class SparkAppJava extends Receiver<String> {
             BufferedReader reader = null;
             try {
                 // connect to the server
-                socket = new Socket(host, port);
+                socket = new Socket(streamFromHost, streamFromPort);
                 reader = new BufferedReader(
                         new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
                 // Until stopped or connection broken continue reading
