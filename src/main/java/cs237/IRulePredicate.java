@@ -1,26 +1,24 @@
 package cs237;
 
-public interface IRulePredicate {
+import java.io.Serializable;
 
-    String id();
+public abstract class IRulePredicate implements Serializable {
 
-    String stream();
+    abstract String id();
 
-    String attribute();
+    abstract String stream();
 
-    Operators operator();
+    abstract String attribute();
 
-    AttributeType attributeType();
+    abstract Operators operator();
 
-    String valueString();
+    abstract AttributeType attributeType();
 
-    int valueInt();
+    abstract String valueString();
 
-    double valueFloat();
+    abstract int valueInt();
 
-    void setResult(boolean result);
+    abstract double valueFloat();
 
-    boolean getResult();
-
-    IEventRule getParent();
+    abstract IEventRule getParent();
 }

@@ -1,12 +1,13 @@
 package cs237;
 
+import java.io.Serializable;
 import java.util.List;
 
-public interface IRuleMerger {
+public abstract class IRuleMerger implements Serializable {
 
-    String id();
+    abstract String id();
 
-    boolean merge(List<IRulePredicate> predicateList);
+    abstract boolean merge(List<IRulePredicate> predicateList);
 
-    IEventRule getParent();
+    abstract IEventRule getParent();
 }

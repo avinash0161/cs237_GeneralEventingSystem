@@ -3,7 +3,7 @@ package cs237;
 import java.util.ArrayList;
 import java.util.List;
 
-public class Thermometer80LTRule implements IEventRule {
+public class Thermometer80LTRule extends IEventRule {
 
     @Override
     public String ruleId() { return userName() + "-" + topicName(); }
@@ -21,11 +21,9 @@ public class Thermometer80LTRule implements IEventRule {
     @Override
     public List<IRulePredicate> predicateList() {
         // Inner Class for predicate
-        class Predicate implements IRulePredicate {
+        class Predicate extends IRulePredicate {
 
             IEventRule parent;
-
-            boolean result = false;
 
             Predicate(IEventRule parent) {
                 this.parent = parent;
@@ -72,16 +70,6 @@ public class Thermometer80LTRule implements IEventRule {
             }
 
             @Override
-            public void setResult(boolean result) {
-                this.result = result;
-            }
-
-            @Override
-            public boolean getResult() {
-                return this.result;
-            }
-
-            @Override
             public IEventRule getParent() {
                 return parent;
             }
@@ -94,11 +82,32 @@ public class Thermometer80LTRule implements IEventRule {
 
     @Override
     public IRuleMerger merger() {
-        return null;
+        // Inner Class for merger
+        class Merger extends IRuleMerger {
+
+            Merger(IEventRule parent) {
+                this.parent = parent;
+            }
+
+            IEventRule parent;
+
+            @Override
+            String id() {
+                return "Thermometer80Rule_m1";
+            }
+
+            @Override
+            boolean merge(List<IRulePredicate> predicateList) {
+                return true;
+            }
+
+            @Override
+            IEventRule getParent() {
+                return null;
+            }
+        }
+
+        return new Merger(this);
     }
 
-    @Override
-    public boolean isNot() {
-        return false;
-    }
 }

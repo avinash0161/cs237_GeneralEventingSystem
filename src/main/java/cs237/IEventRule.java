@@ -1,18 +1,18 @@
 package cs237;
 
+import java.io.Serializable;
 import java.util.List;
 
-public interface IEventRule {
+public abstract class IEventRule implements Serializable {
 
-    public String ruleId();
+    abstract String ruleId();
 
-    public String userName();
+    abstract String userName();
 
-    public String topicName();
+    abstract String topicName();
 
-    public List<IRulePredicate> predicateList();
+    abstract List<IRulePredicate> predicateList();
 
-    public IRuleMerger merger();
+    abstract IRuleMerger merger();
 
-    public boolean isNot();
 }

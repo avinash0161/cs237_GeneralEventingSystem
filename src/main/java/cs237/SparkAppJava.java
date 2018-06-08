@@ -6,10 +6,11 @@ import org.apache.spark.SparkConf;
 
 import com.google.common.io.Closeables;
 
+import org.apache.spark.api.java.function.FlatMapFunction;
 import org.apache.spark.api.java.function.Function2;
-import org.apache.spark.api.java.function.PairFunction;
 import org.apache.spark.storage.StorageLevel;
 import org.apache.spark.streaming.Duration;
+import org.apache.spark.streaming.api.java.JavaDStream;
 import org.apache.spark.streaming.api.java.JavaPairDStream;
 import org.apache.spark.streaming.api.java.JavaReceiverInputDStream;
 import org.apache.spark.streaming.api.java.JavaStreamingContext;
@@ -165,10 +166,10 @@ public class SparkAppJava extends Receiver<String> {
         JavaReceiverInputDStream<String> lines = ssc.receiverStream(new SparkAppJava(host, port));
 
         // - DEBUG - //
-        System.out.println("---------Original Input----------");
-        lines.print(10);
-        log.debug("---------Original Input----------");
-        log.debug(lines);
+//        System.out.println("---------Original Input----------");
+//        lines.print(10);
+//        log.debug("---------Original Input----------");
+//        log.debug(lines);
         // - DEBUG - //
 
 
@@ -183,154 +184,145 @@ public class SparkAppJava extends Receiver<String> {
 //        System.out.println("---------Streams Separated----------");
 //        streams.print(10);
 //        log.debug("---------Streams Separated----------");
-//        log.debug(lines);
+//        log.debug(streams);
         // - DEBUG - //
+
 
         // (3) Apply the predicates to each stream
-        JavaPairDStream<String, List<String>> predicatesMatchRecords =
-                streams.mapToPair((PairFunction<Tuple2<String, List<String>>, String, List<String>>) stream -> {
-
-            // - DEBUG - //
-//            System.out.println("========== Process record: ");
-//            System.out.println(stream._1() + ":" + stream._2());
-            // - DEBUG - //
-
-            String streamName = stream._1();
-            if (streamPredicateMap.containsKey(streamName)) {
-
-                // - DEBUG - //
-//                System.out.println("========== Stream: " + streamName + " matches to predicates.");
-                // - DEBUG - //
-
-                List<IRulePredicate> predicates = streamPredicateMap.get(streamName);
-                for (Iterator<IRulePredicate> iter = predicates.iterator(); iter.hasNext();) {
-
-                    IRulePredicate predicate = iter.next();
-
+        // [test-Thermometer_LT_80, ([Thermometer80Rule_p1], [ThermometerObservation, rid1, 80, 2018-11-08 00:00:00, sensor_id_x])]
+        // [test-Thermometer_LT_80, ([Thermometer80Rule_p1], [ThermometerObservation, rid2, 92, 2018-11-08 00:00:00, sensor_id_y])]
+        // [test-Thermometer_LT_80, ([Thermometer80Rule_p1], [ThermometerObservation, rid3, 131, 2018-11-08 00:00:00, sensor_id_z])]
+        JavaDStream<Tuple2<List<IRulePredicate>, List<List<String>>>> predicateMatchRecordList =
+                streams.flatMap((FlatMapFunction<Tuple2<String, List<String>>, Tuple2<List<IRulePredicate>, List<List<String>>>>) stream -> {
+                    String streamName = stream._1();
                     // - DEBUG - //
-//                    System.out.println("========== Rule: " + predicate.getParent().ruleId());
-//                    System.out.println("========== Predicate: " + predicate.id());
-//                    System.out.println("==========     Attribute: " + predicate.attribute());
-//                    System.out.println("==========     AttributeType: " + predicate.attributeType());
-//                    System.out.println("==========     Operator: " + predicate.operator());
-//                    System.out.println("==========     ValueString: " + predicate.valueString());
-//                    System.out.println("==========     ValueInt: " + predicate.valueInt());
-//                    System.out.println("==========     ValueString: " + predicate.valueFloat());
+//                    log.debug("========== Process Stream: " + streamName + " ......");
+//                    System.out.println("========== Process Stream: " + streamName + " ......");
                     // - DEBUG - //
+                    if (streamPredicateMap.containsKey(streamName)) {
 
-                    String attribute = predicate.attribute();
-                    int indexOfAttribute = streamMetaMap.get(streamName).get(attribute);
+                        // - DEBUG - //
+//                        log.debug("========== Stream: " + streamName + " matches to predicates.");
+//                        System.out.println("========== Stream: " + streamName + " matches to predicates.");
+                        // - DEBUG - //
 
-                    // - DEBUG - //
-//                    System.out.println("========== indexOfAttribute: " + indexOfAttribute);
-                    // - DEBUG - //
+                        ArrayList<Tuple2<List<IRulePredicate>, List<List<String>>>> matchRecords = new ArrayList<>();
 
-                    if (applyPredicate(stream._2().get(indexOfAttribute), predicate)) {
-                        return new Tuple2<>(predicate.getParent().ruleId(), stream._2());
+                        List<IRulePredicate> predicates = streamPredicateMap.get(streamName);
+                        for (Iterator<IRulePredicate> iter = predicates.iterator(); iter.hasNext();) {
+
+                            IRulePredicate predicate = iter.next();
+
+                            // - DEBUG - //
+//                            log.debug("========== Rule: " + predicate.getParent().ruleId());
+//                            log.debug("========== Predicate: " + predicate.id());
+//                            log.debug("==========     Attribute: " + predicate.attribute());
+//                            log.debug("==========     AttributeType: " + predicate.attributeType());
+//                            log.debug("==========     Operator: " + predicate.operator());
+//                            log.debug("==========     ValueString: " + predicate.valueString());
+//                            log.debug("==========     ValueInt: " + predicate.valueInt());
+//                            log.debug("==========     ValueString: " + predicate.valueFloat());
+//                            System.out.println("========== Rule: " + predicate.getParent().ruleId());
+//                            System.out.println("========== Predicate: " + predicate.id());
+//                            System.out.println("==========     Attribute: " + predicate.attribute());
+//                            System.out.println("==========     AttributeType: " + predicate.attributeType());
+//                            System.out.println("==========     Operator: " + predicate.operator());
+//                            System.out.println("==========     ValueString: " + predicate.valueString());
+//                            System.out.println("==========     ValueInt: " + predicate.valueInt());
+//                            System.out.println("==========     ValueString: " + predicate.valueFloat());
+                            // - DEBUG - //
+
+                            String attribute = predicate.attribute();
+                            int indexOfAttribute = streamMetaMap.get(streamName).get(attribute);
+
+                            // - DEBUG - //
+//                            log.debug("========== indexOfAttribute: " + indexOfAttribute);
+//                            System.out.println("========== indexOfAttribute: " + indexOfAttribute);
+                            // - DEBUG - //
+
+                            if (applyPredicate(stream._2().get(indexOfAttribute), predicate)) {
+                                List<IRulePredicate> predicateList = new ArrayList<>();
+                                List<List<String>> recordList = new ArrayList<>();
+                                predicateList.add(predicate);
+                                recordList.add(stream._2());
+                                matchRecords.add(new Tuple2<>(predicateList, recordList));
+                            }
+                        }
+                        if (!matchRecords.isEmpty()) {
+                            return matchRecords.iterator();
+                        }
+                        else {
+                            return new ArrayList<Tuple2<List<IRulePredicate>, List<List<String>>>>().iterator();
+                        }
                     }
-                }
-            }
-            return null;
-        }).filter(record -> record != null);
+                    return new ArrayList<Tuple2<List<IRulePredicate>, List<List<String>>>>().iterator();
+                }).filter(record -> record != null);
 
         // - DEBUG - //
-        System.out.println("---------Predicates Applied----------");
-        predicatesMatchRecords.print(10);
-        log.debug("---------Predicates Applied----------");
-        log.debug(predicatesMatchRecords);
+//        System.out.println("---------Predicate Match Record List----------");
+//        predicateMatchRecordList.print(10);
+//        log.debug("---------Predicate Match Record List----------");
+//        log.debug(predicateMatchRecordList);
         // - DEBUG - //
 
-        // (4) Merge the predicates of each Rule
-        // TODO - Currently, merge phase only merge the list of records together for each matched rule
-        // TODO - Need to find a way to call rule's merger for a list of predicates and decide whether
-        // TODO - this record is in the result list or not.
-        JavaPairDStream<String, List<String>> rulesMatchRecords = predicatesMatchRecords.reduceByKey(
-                (Function2<List<String>, List<String>, List<String>>) (strings1, strings2) -> {
+        JavaPairDStream<String, Tuple2<List<IRulePredicate>, List<List<String>>>> predicateMatchRecords =
+                predicateMatchRecordList.mapToPair(matchRecord -> new Tuple2<>(matchRecord._1().get(0).getParent().ruleId(), matchRecord));
 
-                    List<String> records = new ArrayList<>();
+        // - DEBUG - //
+//        System.out.println("---------Predicate Match Records----------");
+//        predicateMatchRecords.print(10);
+//        log.debug("---------Predicate Match Records----------");
+//        log.debug(predicateMatchRecords);
+        // - DEBUG - //
 
-                    StringBuilder record1 = new StringBuilder();
-                    strings1.forEach(attr -> {
-                        record1.append(attr);
-                        record1.append("-");
-                    });
-                    records.add(record1.toString());
 
-                    StringBuilder record2 = new StringBuilder();
-                    strings2.forEach(attr -> {
-                        record2.append(attr);
-                        record2.append("-");
-                    });
-                    records.add(record2.toString());
+        // (4) Reduce the predicates of each Rule
+        // [test-Thermometer_LT_80, ([Thermometer80Rule_p1, [[ThermometerObservation, rid1, 80, 2018-11-08 00:00:00, sensor_id_x],)]
+        //                            Thermometer80Rule_p1,  [ThermometerObservation, rid2, 92, 2018-11-08 00:00:00, sensor_id_y],
+        //                            Thermometer80Rule_p1]  [ThermometerObservation, rid3, 131, 2018-11-08 00:00:00, sensor_id_z]]
+        JavaPairDStream<String, Tuple2<List<IRulePredicate>, List<List<String>>>> reducedPredicateMatchRecords = predicateMatchRecords.reduceByKey(
+                (Function2<Tuple2<List<IRulePredicate>, List<List<String>>>, Tuple2<List<IRulePredicate>, List<List<String>>>, Tuple2<List<IRulePredicate>, List<List<String>>>>) (iRulePredicateListTuple2, iRulePredicateListTuple22) -> {
 
-                    return records;
+                    List<IRulePredicate> predicateList1 = iRulePredicateListTuple2._1();
+                    List<IRulePredicate> predicateList2 = iRulePredicateListTuple22._1();
+                    predicateList1.addAll(predicateList2);
+
+                    List<List<String>> recordList1 = iRulePredicateListTuple2._2();
+                    List<List<String>> recordList2 = iRulePredicateListTuple22._2();
+                    recordList1.addAll(recordList2);
+
+                    return new Tuple2<>(predicateList1, recordList1);
                 });
 
         // - DEBUG - //
-//        System.out.println("---------Rules Merged----------");
-//        rulesMatchRecords.print(10);
-//        log.debug("---------Rules Merged----------");
-//        log.debug(rulesMatchRecords);
+//        System.out.println("---------Reduced Predicate Match Records----------");
+//        reducedPredicateMatchRecords.print(10);
+//        log.debug("---------Reduced Predicate Match Records----------");
+//        log.debug(reducedPredicateMatchRecords);
         // - DEBUG - //
 
-        // ======================== Previous Manually Rules Engine ======================== //
-        /*SparkConf sparkConf = new SparkConf().setAppName("JavaCustomReceiver");
-        JavaStreamingContext ssc = new JavaStreamingContext(sparkConf, new Duration(5000));
-        // Create an input stream with the custom receiver on target ip:streamFromPort
-        JavaReceiverInputDStream<String> lines = ssc.receiverStream(new SparkAppJava(host, port));
 
-        // - DEBUG - //
-        lines.print(10);
-        log.debug("---------Original Input----------");
-        log.debug(lines);
-        // - DEBUG - //
-
-        // Filter only data begin with "ThermometerObservation";
-        JavaDStream<String> thermometerReadings = lines.filter(
-                new Function<String, Boolean>() {
-                    public Boolean call(String line) {
-                        return "ThermometerObservation".equalsIgnoreCase(line.split("\\|")[0]);
-                    }}
-        );
-
-        // - DEBUG - //
-        thermometerReadings.print(10);
-        log.debug("---------Thermometer Readings----------");
-        log.debug(thermometerReadings);
-        // - DEBUG - //
-
-        // Map the data into <sensorID-timestamp, reading>
-        JavaPairDStream<String, Integer> sensorReadings = thermometerReadings.mapToPair(
-                s -> {
-                    try {
-                        String sensorID = s.split("\\|")[4];
-                        String timestamp = s.split("\\|")[3];
-                        Integer reading = Integer.valueOf(s.split("\\|")[2]);
-                        return new Tuple2<>(sensorID + "-" + timestamp, reading);
-                    } catch (Exception e) {
-                        System.err.println("[mapToPair] Exception data: " + s);
-                        return new Tuple2<>("", 0);
+        // (5) Merge the predicates for each Rule
+        JavaPairDStream<String, List<List<String>>> ruleMatchRecords = reducedPredicateMatchRecords.mapToPair(
+                stringTuple2Tuple2 -> {
+                    String ruleId = stringTuple2Tuple2._1();
+                    List<IRulePredicate> predicateList = stringTuple2Tuple2._2()._1();
+                    List<List<String>> recordList = stringTuple2Tuple2._2()._2();
+                    IEventRule rule = predicateList.get(0).getParent();
+                    if (rule.merger() != null) {
+                        if (rule.merger().merge(predicateList)) {
+                            return new Tuple2<>(ruleId, recordList);
+                        }
                     }
-                }
-        );
+                    return null;
+            }).filter(record -> record != null);
 
         // - DEBUG - //
-        sensorReadings.print(10);
-        log.debug("---------Sensor Readings----------");
-        log.debug(sensorReadings);
+        System.out.println("---------Rule Match Records----------");
+        ruleMatchRecords.print(10);
+        log.debug("---------Rule Match Records----------");
+        log.debug(ruleMatchRecords);
         // - DEBUG - //
-
-        // Filter the data for sensorReadings value >= 80
-        JavaPairDStream<String, Integer> output = sensorReadings.filter(reading -> reading._2 >= 80);
-
-        // Output these readings.
-        output.print();
-
-        // - DEBUG - //
-        log.debug("---------Out put-----------");
-        log.debug(output);
-        // - DEBUG - //*/
-        // ======================== Previous Manually Rules Engine ======================== //
 
         ssc.start();
         ssc.awaitTermination();
