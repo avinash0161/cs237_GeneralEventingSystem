@@ -1,0 +1,5 @@
+package cs237;
+
+public enum Operators {
+    EQUAL, CONTAINS, LESS_THAN, LARGER_THAN, LESS_EQUAL_THAN, LARGER_EQUAL_THAN
+}
