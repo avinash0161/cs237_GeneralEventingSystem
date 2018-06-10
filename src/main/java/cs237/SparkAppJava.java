@@ -407,6 +407,10 @@ public class SparkAppJava extends Receiver<String> {
                     return null;
             }).filter(record -> record != null);
 
+        // ADD SOMETHING HERE TO INFORM GOOGLE THAT WE HAVE ONE OR BUNCH OF RECORDS
+        //createAndPublish.createTopic();
+        //createAndPublish.publishMessages(output.toString());
+
         // - DEBUG - //
         System.out.println("---------Rule Match Records----------");
         ruleMatchRecords.print(100);
