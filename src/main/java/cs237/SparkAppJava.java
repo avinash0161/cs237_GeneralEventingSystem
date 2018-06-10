@@ -33,8 +33,8 @@ public class SparkAppJava extends Receiver<String> {
     public static Map<String, Map<String, Integer>> streamMetaMap = new HashMap<>();
 
     // Event Rulls
-    public static Map<String, IRuleMerger> ruleMergerMap = new HashMap<>();
-    public static Map<String, List<IRulePredicate>> streamPredicateMap = new HashMap<>();
+    public static Map<String, IEventRule> ruleMap = new HashMap<>();
+    public static Map<String, List<IRecordRule>> streamRecordRuleMap = new HashMap<>();
 
     public static Logger log = LogManager.getRootLogger();
 
@@ -45,48 +45,126 @@ public class SparkAppJava extends Receiver<String> {
     public static void loadEventRules() {
 
         // (1) Load the Rules from somewhere.
-        List<IEventRule> eventRuleList = new ArrayList<>();
-        IEventRule rule0 = new Thermometer80LTRule();
-        eventRuleList.add(rule0);
-        ruleMergerMap.put(rule0.ruleId(), rule0.merger());
+//        IEventRule rule0 = new ThermometerGT80Rule();
+//        ruleMap.put(rule0.ruleId(), rule0);
+//        IEventRule rule1 = new TwoUserBothPresentSameRoom();
+//        ruleMap.put(rule1.ruleId(), rule1);
+        IEventRule rule2 = new TwoUserPresentSameFloor("user8", "user9", "20");
+        ruleMap.put(rule2.ruleId(), rule2);
+        IEventRule rule3 = new UserInBuildingAndRoomEmpty("user8", "2065");
+        ruleMap.put(rule3.ruleId(), rule3);
 
         // (2) Construct the Map of stream to List of Predicates;
-        eventRuleList.forEach(eventRule -> {
-            eventRule.predicateList().forEach(predicate -> {
-                if (streamPredicateMap.containsKey(predicate.stream())) {
-                     streamPredicateMap.get(predicate.stream()).add(predicate);
+        ruleMap.forEach((ruleId, rule) -> {
+            rule.recordRuleList().forEach(recordRule -> {
+                if (streamRecordRuleMap.containsKey(recordRule.stream())) {
+                     streamRecordRuleMap.get(recordRule.stream()).add(recordRule);
                 }
                 else {
-                    streamPredicateMap.put(predicate.stream(), Arrays.asList(predicate));
+                    streamRecordRuleMap.put(recordRule.stream(), new ArrayList<>(Arrays.asList(recordRule)));
                 }
             });
         });
     }
 
     /**
-     * Apply a predicate on an attribute
+     * Get Attribute Value of given Attribute Name of given Record
      *
-     * @param attribute
+     * @param record
+     * @param attributeName
+     * @return
+     */
+    public static String getAttributeValue(List<String> record, String attributeName) {
+        String stream = record.get(0);
+
+        Map<String, Integer> schema = streamMetaMap.get(stream);
+
+        int indexOfId = schema.get(attributeName);
+
+        return record.get(indexOfId);
+    }
+
+    /**
+     * Apply a record rule on a record.
+     * NOTE: Only support conjunction of all predicates of one record.
+     * Example: Presence.semantic_entity_id = 'user8' and Presence.location = 2065
+     *
+     * @param record
+     * @param recordRule
+     * @return
+     */
+    public static boolean applyRecordRule(List<String> record, IRecordRule recordRule) {
+        List<IPredicate> predicateList = recordRule.predicateList();
+
+        // - DEBUG - //
+//        log.info("========== Process Record: " + record);
+//        System.out.println("========== Process Record: " + record);
+        // - DEBUG - //
+
+        for (Iterator<IPredicate> iter = predicateList.iterator(); iter.hasNext();) {
+            IPredicate predicate = iter.next();
+            String attributeValue = getAttributeValue(record, predicate.attribute());
+
+            // - DEBUG - //
+//            log.info("========== Predicate: " + predicate.id());
+//            log.info("==========     Attribute: " + predicate.attribute());
+//            log.info("==========     AttributeType: " + predicate.attributeType());
+//            log.info("==========     Operator: " + predicate.operator());
+//            log.info("==========     ValueString: " + predicate.valueString());
+//            log.info("==========     ValueInt: " + predicate.valueInt());
+//            log.info("==========     ValueString: " + predicate.valueFloat());
+//            System.out.println("========== Predicate: " + predicate.id());
+//            System.out.println("==========     Attribute: " + predicate.attribute());
+//            System.out.println("==========     AttributeType: " + predicate.attributeType());
+//            System.out.println("==========     Operator: " + predicate.operator());
+//            System.out.println("==========     ValueString: " + predicate.valueString());
+//            System.out.println("==========     ValueInt: " + predicate.valueInt());
+//            System.out.println("==========     ValueString: " + predicate.valueFloat());
+            // - DEBUG - //
+
+            if (!applyPredicate(attributeValue, predicate)) {
+                // - DEBUG - //
+//                log.info("========== Predicate:" + predicate.id() + " [False] -NO-!");
+//                System.out.println("========== Predicate:" + predicate.id() + " [False] -NO-!");
+                // - DEBUG - //
+                return false;
+            }
+        }
+
+        // - DEBUG - //
+        log.info("========== Record : " + record + " <<<<<< Rule: " + recordRule.id());
+        System.out.println("========== Record : " + record + " <<<<<< Rule: " + recordRule.id());
+//        log.info("========== Rule: " + recordRule.id() + " [True] ---YES!!!---");
+//        System.out.println("========== Rule: " + recordRule.id() + " [True] ---YES!!!---");
+        // - DEBUG - //
+
+        return true;
+    }
+
+    /**
+     * Apply a predicate on an attribute value
+     *
+     * @param attributeValue
      * @param predicate
      * @return
      */
-    public static boolean applyPredicate(String attribute, IRulePredicate predicate) {
+    public static boolean applyPredicate(String attributeValue, IPredicate predicate) {
 
         switch(predicate.operator()) {
             case EQUAL:
                 switch(predicate.attributeType()) {
                     case STRING:
-                        return attribute.equals(predicate.valueString());
+                        return attributeValue.equals(predicate.valueString());
                     case INT:
-                        return Integer.valueOf(attribute) == predicate.valueInt();
+                        return Integer.valueOf(attributeValue) == predicate.valueInt();
                     case FLOAT:
-                        return Double.valueOf(attribute) == predicate.valueFloat();
+                        return Double.valueOf(attributeValue) == predicate.valueFloat();
                 }
                 break;
             case CONTAINS:
                 switch(predicate.attributeType()) {
                     case STRING:
-                        return attribute.contains(predicate.valueString());
+                        return attributeValue.contains(predicate.valueString());
                     case INT:
                         return false;
                     case FLOAT:
@@ -96,47 +174,67 @@ public class SparkAppJava extends Receiver<String> {
             case LESS_THAN:
                 switch(predicate.attributeType()) {
                     case STRING:
-                        return attribute.compareTo(predicate.valueString()) < 0;
+                        return attributeValue.compareTo(predicate.valueString()) < 0;
                     case INT:
-                        return Integer.valueOf(attribute) < predicate.valueInt();
+                        return Integer.valueOf(attributeValue) < predicate.valueInt();
                     case FLOAT:
-                        return Double.valueOf(attribute) < predicate.valueFloat();
+                        return Double.valueOf(attributeValue) < predicate.valueFloat();
                 }
                 break;
-            case LARGER_THAN:
+            case GREATER_THAN:
                 switch(predicate.attributeType()) {
                     case STRING:
-                        return attribute.compareTo(predicate.valueString()) > 0;
+                        return attributeValue.compareTo(predicate.valueString()) > 0;
                     case INT:
-                        return Integer.valueOf(attribute) > predicate.valueInt();
+                        return Integer.valueOf(attributeValue) > predicate.valueInt();
                     case FLOAT:
-                        return Double.valueOf(attribute) > predicate.valueFloat();
+                        return Double.valueOf(attributeValue) > predicate.valueFloat();
                 }
                 break;
             case LESS_EQUAL_THAN:
                 switch(predicate.attributeType()) {
                     case STRING:
-                        return attribute.compareTo(predicate.valueString()) <= 0;
+                        return attributeValue.compareTo(predicate.valueString()) <= 0;
                     case INT:
-                        return Integer.valueOf(attribute) <= predicate.valueInt();
+                        return Integer.valueOf(attributeValue) <= predicate.valueInt();
                     case FLOAT:
-                        return Double.valueOf(attribute) <= predicate.valueFloat();
+                        return Double.valueOf(attributeValue) <= predicate.valueFloat();
                 }
                 break;
-            case LARGER_EQUAL_THAN:
+            case GREATER_EQUAL_THAN:
                 switch(predicate.attributeType()) {
                     case STRING:
-                        return attribute.compareTo(predicate.valueString()) >= 0;
+                        return attributeValue.compareTo(predicate.valueString()) >= 0;
                     case INT:
-                        return Integer.valueOf(attribute) >= predicate.valueInt();
+                        return Integer.valueOf(attributeValue) >= predicate.valueInt();
                     case FLOAT:
-                        return Double.valueOf(attribute) >= predicate.valueFloat();
+                        return Double.valueOf(attributeValue) >= predicate.valueFloat();
                 }
                 break;
+            case BEGIN_WITH:
+                switch(predicate.attributeType()) {
+                    case STRING:
+                        return attributeValue.indexOf(predicate.valueString()) == 0;
+                    case INT:
+                        return false;
+                    case FLOAT:
+                        return false;
+                }
             default:
                 return false;
         }
         return false;
+    }
+
+    /**
+     * Get the record Id of a record
+     *
+     * @param record
+     * @return
+     */
+    public static String getRecordId(List<String> record) {
+
+        return getAttributeValue(record,"id");
     }
 
     public static void main(String[] args) throws Exception {
@@ -153,10 +251,10 @@ public class SparkAppJava extends Receiver<String> {
         loadEventRules();
 
         // - DEBUG - //
-//        System.out.println("---------streamPredicateMap----------");
-//        System.out.println(streamPredicateMap);
-//        log.debug("---------streamPredicateMap----------");
-//        log.debug(streamPredicateMap);
+//        System.out.println("---------streamRecordRuleMap----------");
+//        System.out.println(streamRecordRuleMap);
+//        log.debug("---------streamRecordRuleMap----------");
+//        log.debug(streamRecordRuleMap);
         // - DEBUG - //
 
         // (1) New a Stream Receiver
@@ -167,9 +265,9 @@ public class SparkAppJava extends Receiver<String> {
 
         // - DEBUG - //
 //        System.out.println("---------Original Input----------");
-//        lines.print(10);
-//        log.debug("---------Original Input----------");
-//        log.debug(lines);
+//        lines.print(50);
+//        log.info("---------Original Input----------");
+//        log.info(lines);
         // - DEBUG - //
 
 
@@ -189,89 +287,81 @@ public class SparkAppJava extends Receiver<String> {
 
 
         // (3) Apply the predicates to each stream
-        // [test-Thermometer_LT_80, ([Thermometer80Rule_p1], [ThermometerObservation, rid1, 80, 2018-11-08 00:00:00, sensor_id_x])]
-        // [test-Thermometer_LT_80, ([Thermometer80Rule_p1], [ThermometerObservation, rid2, 92, 2018-11-08 00:00:00, sensor_id_y])]
-        // [test-Thermometer_LT_80, ([Thermometer80Rule_p1], [ThermometerObservation, rid3, 131, 2018-11-08 00:00:00, sensor_id_z])]
-        JavaDStream<Tuple2<List<IRulePredicate>, List<List<String>>>> predicateMatchRecordList =
-                streams.flatMap((FlatMapFunction<Tuple2<String, List<String>>, Tuple2<List<IRulePredicate>, List<List<String>>>>) stream -> {
+        // [test-Thermometer_LT_80, ([Thermometer80Rule_r1], [ThermometerObservation, rid1, 80, 2018-11-08 00:00:00, sensor_id_x])]
+        // [test-Thermometer_LT_80, ([Thermometer80Rule_r1], [ThermometerObservation, rid2, 92, 2018-11-08 00:00:00, sensor_id_y])]
+        // [test-Thermometer_LT_80, ([Thermometer80Rule_r1], [ThermometerObservation, rid3, 131, 2018-11-08 00:00:00, sensor_id_z])]
+        JavaDStream<Tuple2<List<IRecordRule>, List<List<String>>>> predicateMatchRecordList =
+                streams.flatMap((FlatMapFunction<Tuple2<String, List<String>>, Tuple2<List<IRecordRule>, List<List<String>>>>) stream -> {
                     String streamName = stream._1();
                     // - DEBUG - //
-//                    log.debug("========== Process Stream: " + streamName + " ......");
+//                    log.info("========== Process Stream: " + streamName + " ......");
 //                    System.out.println("========== Process Stream: " + streamName + " ......");
                     // - DEBUG - //
-                    if (streamPredicateMap.containsKey(streamName)) {
+                    if (streamRecordRuleMap.containsKey(streamName)) {
 
                         // - DEBUG - //
 //                        log.debug("========== Stream: " + streamName + " matches to predicates.");
 //                        System.out.println("========== Stream: " + streamName + " matches to predicates.");
                         // - DEBUG - //
 
-                        ArrayList<Tuple2<List<IRulePredicate>, List<List<String>>>> matchRecords = new ArrayList<>();
+                        ArrayList<Tuple2<List<IRecordRule>, List<List<String>>>> matchRecords = new ArrayList<>();
 
-                        List<IRulePredicate> predicates = streamPredicateMap.get(streamName);
-                        for (Iterator<IRulePredicate> iter = predicates.iterator(); iter.hasNext();) {
+                        List<IRecordRule> recordRules = streamRecordRuleMap.get(streamName);
+                        for (Iterator<IRecordRule> iter = recordRules.iterator(); iter.hasNext();) {
 
-                            IRulePredicate predicate = iter.next();
+                            IRecordRule recordRule = iter.next();
 
                             // - DEBUG - //
-//                            log.debug("========== Rule: " + predicate.getParent().ruleId());
-//                            log.debug("========== Predicate: " + predicate.id());
-//                            log.debug("==========     Attribute: " + predicate.attribute());
-//                            log.debug("==========     AttributeType: " + predicate.attributeType());
-//                            log.debug("==========     Operator: " + predicate.operator());
-//                            log.debug("==========     ValueString: " + predicate.valueString());
-//                            log.debug("==========     ValueInt: " + predicate.valueInt());
-//                            log.debug("==========     ValueString: " + predicate.valueFloat());
-//                            System.out.println("========== Rule: " + predicate.getParent().ruleId());
-//                            System.out.println("========== Predicate: " + predicate.id());
-//                            System.out.println("==========     Attribute: " + predicate.attribute());
-//                            System.out.println("==========     AttributeType: " + predicate.attributeType());
-//                            System.out.println("==========     Operator: " + predicate.operator());
-//                            System.out.println("==========     ValueString: " + predicate.valueString());
-//                            System.out.println("==========     ValueInt: " + predicate.valueInt());
-//                            System.out.println("==========     ValueString: " + predicate.valueFloat());
+//                            log.info("========== Rule: " + recordRule.getParent().ruleId());
+//                            log.info("========== RecordRule: " + recordRule.id());
+//                            System.out.println("========== Rule: " + recordRule.getParent().ruleId());
+//                            System.out.println("========== RecordRule: " + recordRule.id());
                             // - DEBUG - //
 
-                            String attribute = predicate.attribute();
-                            int indexOfAttribute = streamMetaMap.get(streamName).get(attribute);
+                            //String attribute = recordRule.attribute();
+                            //int indexOfAttribute = streamMetaMap.get(streamName).get(attribute);
 
                             // - DEBUG - //
 //                            log.debug("========== indexOfAttribute: " + indexOfAttribute);
 //                            System.out.println("========== indexOfAttribute: " + indexOfAttribute);
                             // - DEBUG - //
 
-                            if (applyPredicate(stream._2().get(indexOfAttribute), predicate)) {
-                                List<IRulePredicate> predicateList = new ArrayList<>();
+                            if (applyRecordRule(stream._2(), recordRule)) {
+                                // -- No more needed -- //
+//                                String recordId = getRecordId(stream._2());
+//                                recordRule.setRecordId(recordId);
+                                // -- No more needed -- //
+                                List<IRecordRule> recordRuleList = new ArrayList<>();
                                 List<List<String>> recordList = new ArrayList<>();
-                                predicateList.add(predicate);
+                                recordRuleList.add(recordRule);
                                 recordList.add(stream._2());
-                                matchRecords.add(new Tuple2<>(predicateList, recordList));
+                                matchRecords.add(new Tuple2<>(recordRuleList, recordList));
                             }
                         }
                         if (!matchRecords.isEmpty()) {
                             return matchRecords.iterator();
                         }
                         else {
-                            return new ArrayList<Tuple2<List<IRulePredicate>, List<List<String>>>>().iterator();
+                            return new ArrayList<Tuple2<List<IRecordRule>, List<List<String>>>>().iterator();
                         }
                     }
-                    return new ArrayList<Tuple2<List<IRulePredicate>, List<List<String>>>>().iterator();
+                    return new ArrayList<Tuple2<List<IRecordRule>, List<List<String>>>>().iterator();
                 }).filter(record -> record != null);
 
         // - DEBUG - //
-//        System.out.println("---------Predicate Match Record List----------");
-//        predicateMatchRecordList.print(10);
-//        log.debug("---------Predicate Match Record List----------");
-//        log.debug(predicateMatchRecordList);
+//        System.out.println("---------RecordRule Match Record List----------");
+//        predicateMatchRecordList.print(50);
+//        log.info("---------RecordRule Match Record List----------");
+//        log.info(predicateMatchRecordList);
         // - DEBUG - //
 
-        JavaPairDStream<String, Tuple2<List<IRulePredicate>, List<List<String>>>> predicateMatchRecords =
+        JavaPairDStream<String, Tuple2<List<IRecordRule>, List<List<String>>>> predicateMatchRecords =
                 predicateMatchRecordList.mapToPair(matchRecord -> new Tuple2<>(matchRecord._1().get(0).getParent().ruleId(), matchRecord));
 
         // - DEBUG - //
-//        System.out.println("---------Predicate Match Records----------");
+//        System.out.println("---------RecordRule Match Records----------");
 //        predicateMatchRecords.print(10);
-//        log.debug("---------Predicate Match Records----------");
+//        log.debug("---------RecordRule Match Records----------");
 //        log.debug(predicateMatchRecords);
         // - DEBUG - //
 
@@ -280,11 +370,11 @@ public class SparkAppJava extends Receiver<String> {
         // [test-Thermometer_LT_80, ([Thermometer80Rule_p1, [[ThermometerObservation, rid1, 80, 2018-11-08 00:00:00, sensor_id_x],)]
         //                            Thermometer80Rule_p1,  [ThermometerObservation, rid2, 92, 2018-11-08 00:00:00, sensor_id_y],
         //                            Thermometer80Rule_p1]  [ThermometerObservation, rid3, 131, 2018-11-08 00:00:00, sensor_id_z]]
-        JavaPairDStream<String, Tuple2<List<IRulePredicate>, List<List<String>>>> reducedPredicateMatchRecords = predicateMatchRecords.reduceByKey(
-                (Function2<Tuple2<List<IRulePredicate>, List<List<String>>>, Tuple2<List<IRulePredicate>, List<List<String>>>, Tuple2<List<IRulePredicate>, List<List<String>>>>) (iRulePredicateListTuple2, iRulePredicateListTuple22) -> {
+        JavaPairDStream<String, Tuple2<List<IRecordRule>, List<List<String>>>> reducedPredicateMatchRecords = predicateMatchRecords.reduceByKey(
+                (Function2<Tuple2<List<IRecordRule>, List<List<String>>>, Tuple2<List<IRecordRule>, List<List<String>>>, Tuple2<List<IRecordRule>, List<List<String>>>>) (iRulePredicateListTuple2, iRulePredicateListTuple22) -> {
 
-                    List<IRulePredicate> predicateList1 = iRulePredicateListTuple2._1();
-                    List<IRulePredicate> predicateList2 = iRulePredicateListTuple22._1();
+                    List<IRecordRule> predicateList1 = iRulePredicateListTuple2._1();
+                    List<IRecordRule> predicateList2 = iRulePredicateListTuple22._1();
                     predicateList1.addAll(predicateList2);
 
                     List<List<String>> recordList1 = iRulePredicateListTuple2._2();
@@ -295,10 +385,10 @@ public class SparkAppJava extends Receiver<String> {
                 });
 
         // - DEBUG - //
-//        System.out.println("---------Reduced Predicate Match Records----------");
-//        reducedPredicateMatchRecords.print(10);
-//        log.debug("---------Reduced Predicate Match Records----------");
-//        log.debug(reducedPredicateMatchRecords);
+//        System.out.println("---------Reduced RecordRule Match Records----------");
+//        reducedPredicateMatchRecords.print(50);
+//        log.info("---------Reduced RecordRule Match Records----------");
+//        log.info(reducedPredicateMatchRecords);
         // - DEBUG - //
 
 
@@ -306,11 +396,11 @@ public class SparkAppJava extends Receiver<String> {
         JavaPairDStream<String, List<List<String>>> ruleMatchRecords = reducedPredicateMatchRecords.mapToPair(
                 stringTuple2Tuple2 -> {
                     String ruleId = stringTuple2Tuple2._1();
-                    List<IRulePredicate> predicateList = stringTuple2Tuple2._2()._1();
+                    List<IRecordRule> recordRuleList = stringTuple2Tuple2._2()._1();
                     List<List<String>> recordList = stringTuple2Tuple2._2()._2();
-                    IEventRule rule = predicateList.get(0).getParent();
+                    IEventRule rule = recordRuleList.get(0).getParent();
                     if (rule.merger() != null) {
-                        if (rule.merger().merge(predicateList)) {
+                        if (rule.merger().merge(recordRuleList)) {
                             return new Tuple2<>(ruleId, recordList);
                         }
                     }
@@ -319,9 +409,9 @@ public class SparkAppJava extends Receiver<String> {
 
         // - DEBUG - //
         System.out.println("---------Rule Match Records----------");
-        ruleMatchRecords.print(10);
-        log.debug("---------Rule Match Records----------");
-        log.debug(ruleMatchRecords);
+        ruleMatchRecords.print(100);
+        log.info("---------Rule Match Records----------");
+        log.info(ruleMatchRecords);
         // - DEBUG - //
 
         ssc.start();
@@ -338,8 +428,38 @@ public class SparkAppJava extends Receiver<String> {
         ThermometerObservation.put("temperature", 2);
         ThermometerObservation.put("timeStamp", 3);
         ThermometerObservation.put("sensor_id", 4);
-
         streamMetaMap.put("ThermometerObservation", ThermometerObservation);
+
+        Map<String, Integer> WiFiAPObservation = new HashMap<>();
+        WiFiAPObservation.put("id", 1);
+        WiFiAPObservation.put("clientId", 2);
+        WiFiAPObservation.put("timeStamp", 3);
+        WiFiAPObservation.put("sensor_id", 4);
+        streamMetaMap.put("WiFiAPObservation", WiFiAPObservation);
+
+        Map<String, Integer> WeMoObservation = new HashMap<>();
+        WeMoObservation.put("id", 1);
+        WeMoObservation.put("currentMilliWatts", 2);
+        WeMoObservation.put("onTodaySeconds", 3);
+        WeMoObservation.put("timeStamp", 4);
+        WeMoObservation.put("sensor_id", 5);
+        streamMetaMap.put("WeMoObservation", WeMoObservation);
+
+        Map<String, Integer> PRESENCE = new HashMap<>();
+        PRESENCE.put("id", 1);
+        PRESENCE.put("semantic_entity_id", 2);
+        PRESENCE.put("location", 3);
+        PRESENCE.put("timeStamp", 4);
+        PRESENCE.put("virtual_sensor_id", 5);
+        streamMetaMap.put("PRESENCE", PRESENCE);
+
+        Map<String, Integer> OCCUPANCY = new HashMap<>();
+        OCCUPANCY.put("id", 1);
+        OCCUPANCY.put("semantic_entity_id", 2);
+        OCCUPANCY.put("occupancy", 3);
+        OCCUPANCY.put("timeStamp", 4);
+        OCCUPANCY.put("virtual_sensor_id", 5);
+        streamMetaMap.put("OCCUPANCY", OCCUPANCY);
     }
 
     @Override

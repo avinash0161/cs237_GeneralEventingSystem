@@ -11,7 +11,7 @@ public abstract class IEventRule implements Serializable {
 
     abstract String topicName();
 
-    abstract List<IRulePredicate> predicateList();
+    abstract List<IRecordRule> recordRuleList();
 
     abstract IRuleMerger merger();
 

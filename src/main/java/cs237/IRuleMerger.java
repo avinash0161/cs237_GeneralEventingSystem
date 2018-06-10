@@ -7,7 +7,7 @@ public abstract class IRuleMerger implements Serializable {
 
     abstract String id();
 
-    abstract boolean merge(List<IRulePredicate> predicateList);
+    abstract boolean merge(List<IRecordRule> recordRuleList);
 
     abstract IEventRule getParent();
 }

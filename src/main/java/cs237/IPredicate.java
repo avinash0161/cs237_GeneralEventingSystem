@@ -2,11 +2,19 @@ package cs237;
 
 import java.io.Serializable;
 
-public abstract class IRulePredicate implements Serializable {
+public abstract class IPredicate implements Serializable {
+
+    IRecordRule parent;
+
+    IPredicate(IRecordRule parent) {
+        this.parent = parent;
+    }
+
+    IRecordRule getParent() {
+        return this.parent;
+    }
 
     abstract String id();
-
-    abstract String stream();
 
     abstract String attribute();
 
@@ -19,6 +27,4 @@ public abstract class IRulePredicate implements Serializable {
     abstract int valueInt();
 
     abstract double valueFloat();
-
-    abstract IEventRule getParent();
 }

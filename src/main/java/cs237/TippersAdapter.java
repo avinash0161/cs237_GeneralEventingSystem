@@ -26,7 +26,7 @@ public class TippersAdapter {
     public static int numOfDataPullers = 5;
 
     // Pulling data from this startDate
-    public static LocalDateTime startDate = LocalDateTime.of(2017,11, 8, 0, 0, 0);
+    public static LocalDateTime startDate = LocalDateTime.of(2017,11, 8, 7, 0, 0);
 
     // Pulling data frequency
     // Meaning: For every how many seconds will this Puller clock tick.
@@ -34,7 +34,7 @@ public class TippersAdapter {
 
     // Pulling data frequency scale
     // Meaning: How many times of time of data in real world will be pulled every 1 tick of this simulation clock.
-    public static int frequencyScale = 12;
+    public static int frequencyScale = 24;
 
     // The puller thread which will be created and run once a client connects to this Socket Server.
     private static class Puller extends Thread {
