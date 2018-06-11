@@ -132,10 +132,8 @@ public class SparkAppJava extends Receiver<String> {
         }
 
         // - DEBUG - //
-        log.info("========== Record : " + record + " <<<<<< Rule: " + recordRule.id());
-        System.out.println("========== Record : " + record + " <<<<<< Rule: " + recordRule.id());
-//        log.info("========== Rule: " + recordRule.id() + " [True] ---YES!!!---");
-//        System.out.println("========== Rule: " + recordRule.id() + " [True] ---YES!!!---");
+        log.error("========== Record : " + record + " <<<<<< Rule: " + recordRule.id());
+//        System.out.println("========== Record : " + record + " <<<<<< Rule: " + recordRule.id());
         // - DEBUG - //
 
         return true;
@@ -227,18 +225,15 @@ public class SparkAppJava extends Receiver<String> {
     }
 
     /**
-     * Get the record Id of a record
+     * Main function of Spark job:
+     *   Logic of this Event framework.
      *
-     * @param record
-     * @return
+     * @param args
+     * @throws Exception
      */
-    public static String getRecordId(List<String> record) {
-
-        return getAttributeValue(record,"id");
-    }
-
     public static void main(String[] args) throws Exception {
 
+        // By default, listens to localhost:9999 socket channel.
         String host = "localhost";
         int port = 9999;
 
@@ -287,6 +282,7 @@ public class SparkAppJava extends Receiver<String> {
 
 
         // (3) Apply the predicates to each stream
+        // After this step the output is in the following format:
         // [test-Thermometer_LT_80, ([Thermometer80Rule_r1], [ThermometerObservation, rid1, 80, 2018-11-08 00:00:00, sensor_id_x])]
         // [test-Thermometer_LT_80, ([Thermometer80Rule_r1], [ThermometerObservation, rid2, 92, 2018-11-08 00:00:00, sensor_id_y])]
         // [test-Thermometer_LT_80, ([Thermometer80Rule_r1], [ThermometerObservation, rid3, 131, 2018-11-08 00:00:00, sensor_id_z])]
@@ -318,19 +314,7 @@ public class SparkAppJava extends Receiver<String> {
 //                            System.out.println("========== RecordRule: " + recordRule.id());
                             // - DEBUG - //
 
-                            //String attribute = recordRule.attribute();
-                            //int indexOfAttribute = streamMetaMap.get(streamName).get(attribute);
-
-                            // - DEBUG - //
-//                            log.debug("========== indexOfAttribute: " + indexOfAttribute);
-//                            System.out.println("========== indexOfAttribute: " + indexOfAttribute);
-                            // - DEBUG - //
-
                             if (applyRecordRule(stream._2(), recordRule)) {
-                                // -- No more needed -- //
-//                                String recordId = getRecordId(stream._2());
-//                                recordRule.setRecordId(recordId);
-                                // -- No more needed -- //
                                 List<IRecordRule> recordRuleList = new ArrayList<>();
                                 List<List<String>> recordList = new ArrayList<>();
                                 recordRuleList.add(recordRule);
@@ -367,6 +351,7 @@ public class SparkAppJava extends Receiver<String> {
 
 
         // (4) Reduce the predicates of each Rule
+        // After this step the output is in the following format:
         // [test-Thermometer_LT_80, ([Thermometer80Rule_p1, [[ThermometerObservation, rid1, 80, 2018-11-08 00:00:00, sensor_id_x],)]
         //                            Thermometer80Rule_p1,  [ThermometerObservation, rid2, 92, 2018-11-08 00:00:00, sensor_id_y],
         //                            Thermometer80Rule_p1]  [ThermometerObservation, rid3, 131, 2018-11-08 00:00:00, sensor_id_z]]
@@ -408,32 +393,39 @@ public class SparkAppJava extends Receiver<String> {
             }).filter(record -> record != null);
 
         // - DEBUG - //
-        System.out.println("---------Rule Match Records----------");
-        ruleMatchRecords.print(100);
-        log.info("---------Rule Match Records----------");
-        log.info(ruleMatchRecords);
+//        System.out.println("---------Rule Match Records----------");
+//        ruleMatchRecords.print(100);
+        log.error("---------Rule Match Records----------");
+        log.error(ruleMatchRecords.toString());
         // - DEBUG - //
 
-        // (6) Publish the records to Google Pub/Sub Service with topicId = RuleId
-        ruleMatchRecords.foreachRDD(x -> {
-            x.foreach(ruleToRecords -> {
-                String ruleId = ruleToRecords._1();
-                List<List<String>> records = ruleToRecords._2();
+        // (6) Publish the records to Apache ActiveMQ with topicId = RuleId
+        ruleMatchRecords.foreachRDD(x -> x.foreach(ruleToRecords -> {
+            String ruleId = ruleToRecords._1();
+            List<List<String>> records = ruleToRecords._2();
 
-                List<String> messages = new ArrayList<>();
+            List<String> messages = new ArrayList<>();
 
-                for(Iterator<List<String>> iter = records.iterator(); iter.hasNext();) {
-                    List<String> record = iter.next();
-                    StringBuilder message = new StringBuilder();
-                    for(Iterator<String> iter_1 = record.iterator(); iter_1.hasNext();) {
-                        message.append(iter_1.next());
-                    }
-                    messages.add(message.toString());
+            for(Iterator<List<String>> iter = records.iterator(); iter.hasNext();) {
+                List<String> record = iter.next();
+                // For each record, flat the list of attributes into one String, delimited by "|".
+                StringBuilder message = new StringBuilder();
+                int i = 0;
+                for(Iterator<String> iter_1 = record.iterator(); iter_1.hasNext(); i ++) {
+                    if (i > 0)
+                        message.append("|");
+                    message.append(iter_1.next());
                 }
+                messages.add(message.toString());
+            }
 
-                PubSubFramework.publishMessages(ruleId, messages);
-            });
-        });
+            int successfulCount = Publisher.sendMessagesByHttp(ruleId, messages);
+
+            // - DEBUG - //
+//            System.out.println("========== Publish " + successfulCount + " messages to topic: " + ruleId);
+            log.error("========== Published " + successfulCount + " messages to topic: " + ruleId);
+            // - DEBUG - //
+        }));
 
         ssc.start();
         ssc.awaitTermination();
