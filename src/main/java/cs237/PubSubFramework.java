@@ -1,9 +1,7 @@
 package cs237;
 
 import com.google.api.core.ApiFuture;
-import com.google.api.core.ApiFutureCallback;
 import com.google.api.core.ApiFutures;
-import com.google.api.core.ApiService;
 import com.google.api.gax.rpc.ApiException;
 import com.google.cloud.ServiceOptions;
 import com.google.cloud.pubsub.v1.Publisher;
@@ -12,18 +10,7 @@ import com.google.protobuf.ByteString;
 import com.google.pubsub.v1.ProjectTopicName;
 import com.google.pubsub.v1.PubsubMessage;
 
-import com.google.cloud.pubsub.v1.AckReplyConsumer;
-import com.google.cloud.pubsub.v1.MessageReceiver;
-import com.google.cloud.pubsub.v1.Subscriber;
-import com.google.cloud.pubsub.v1.SubscriptionAdminClient;
-import com.google.common.util.concurrent.MoreExecutors;
-import com.google.pubsub.v1.ProjectSubscriptionName;
-import com.google.pubsub.v1.ProjectTopicName;
-import com.google.pubsub.v1.PubsubMessage;
-import com.google.pubsub.v1.PushConfig;
-
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 public class PubSubFramework {
@@ -32,12 +19,13 @@ public class PubSubFramework {
     public static String projectId = ServiceOptions.getDefaultProjectId();
 
     // Your topic ID, eg. "my-topic"
-    public static String topicId = "TEST123";
+    //public static String topicId = "TEST123";
 
     // Your subscriber ID
     public static String subsId = "USER_TEST";
 
-    public static void createTopic() throws Exception {
+    private static void createTopic(String topicId) throws Exception {
+
         // Create a new topic
         ProjectTopicName topic = ProjectTopicName.of(projectId, topicId);
         try (TopicAdminClient topicAdminClient = TopicAdminClient.create()) {
@@ -50,7 +38,10 @@ public class PubSubFramework {
         System.out.printf("Topic %s:%s created.\n", topic.getProject(), topic.getTopic());
     }
 
-    public static void publishMessages() throws Exception {
+    public static void publishMessages(String topicId, List<String> messages) throws Exception {
+
+        createTopic(topicId);
+
         // [START pubsub_publish]
         ProjectTopicName topicName = ProjectTopicName.of(projectId, topicId);
         Publisher publisher = null;
@@ -59,12 +50,6 @@ public class PubSubFramework {
         try {
             // Create a publisher instance with default settings bound to the topic
             publisher = Publisher.newBuilder(topicName).build();
-
-            // INSERT MESSAGE HERE
-            List<String> messages = new ArrayList<String>();
-            messages.add("(a0591d80_b6ee_4db4_a7e5_913cf0f2003e-2017-11-08 00:30:00,34)");
-            messages.add("(48ec9043_4d33_4fc5_b79d_62eca3864f74-2017-11-08 00:30:00,31)");
-            messages.add("(5ba0167e_a57f_445f_b734_6f6c72231bcc-2017-11-08 00:30:00,56)");
 
             // schedule publishing one message at a time : messages get automatically batched
             for (String message : messages) {
@@ -91,7 +76,7 @@ public class PubSubFramework {
         // [END pubsub_publish]
     }
 
-    public static void publishMessagesWithErrorHandler() throws Exception {
+/*    public static void publishMessagesWithErrorHandler() throws Exception {
         // [START pubsub_publish_error_handler]
         ProjectTopicName topicName = ProjectTopicName.of("my-project-id", "my-topic-id");
         Publisher publisher = null;
@@ -137,7 +122,7 @@ public class PubSubFramework {
             }
         }
         // [END pubsub_publish_error_handler]
-    }
+    }*/
 
     /*
     public static void createSubscriber() throws Exception {
@@ -184,6 +169,6 @@ public class PubSubFramework {
 
     public static void main(String... args) throws Exception {
         //createTopic();
-        publishMessages();
+        //publishMessages();
     }
 }

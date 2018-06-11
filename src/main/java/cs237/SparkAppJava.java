@@ -407,16 +407,33 @@ public class SparkAppJava extends Receiver<String> {
                     return null;
             }).filter(record -> record != null);
 
-        // ADD SOMETHING HERE TO INFORM GOOGLE THAT WE HAVE ONE OR BUNCH OF RECORDS
-        //createAndPublish.createTopic();
-        //createAndPublish.publishMessages(output.toString());
-
         // - DEBUG - //
         System.out.println("---------Rule Match Records----------");
         ruleMatchRecords.print(100);
         log.info("---------Rule Match Records----------");
         log.info(ruleMatchRecords);
         // - DEBUG - //
+
+        // (6) Publish the records to Google Pub/Sub Service with topicId = RuleId
+        ruleMatchRecords.foreachRDD(x -> {
+            x.foreach(ruleToRecords -> {
+                String ruleId = ruleToRecords._1();
+                List<List<String>> records = ruleToRecords._2();
+
+                List<String> messages = new ArrayList<>();
+
+                for(Iterator<List<String>> iter = records.iterator(); iter.hasNext();) {
+                    List<String> record = iter.next();
+                    StringBuilder message = new StringBuilder();
+                    for(Iterator<String> iter_1 = record.iterator(); iter_1.hasNext();) {
+                        message.append(iter_1.next());
+                    }
+                    messages.add(message.toString());
+                }
+
+                PubSubFramework.publishMessages(ruleId, messages);
+            });
+        });
 
         ssc.start();
         ssc.awaitTermination();
