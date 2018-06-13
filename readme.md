@@ -1,3 +1,5 @@
+Created by: Qiushi Bai, Jonathan Harijanto, and Avinash Kumar
+
 # To run the code
 
 ## 0. Prerequisites
