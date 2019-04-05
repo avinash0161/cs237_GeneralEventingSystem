@@ -68,8 +68,6 @@ Ubuntu: `sudo apt-get install maven`
 
 `cs237_GeneralEventingSystem $ scp cs237@128.195.52.128:~/cs237.db.zip ./`
 
-password: <PWD>.
-
 *Note: This cs237.db.zip file is about 1.1GB, will take a while to download it*
 
 ##### (1.2) Unzip
